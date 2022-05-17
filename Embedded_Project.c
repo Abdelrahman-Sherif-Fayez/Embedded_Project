@@ -159,7 +159,7 @@ static void get_cookingTime(void){
 		}
 		
 		for (i=0,cursor = 7; cursor >=counter ; cursor--,i++){
-			if(cursor ==5 || cursor ==4){
+			if(cursor ==5 || cursor ==4){5
 				cursor--;
 		}
 			LCD_moveCursor(1,cursor);
@@ -179,20 +179,19 @@ static void get_cookingTime(void){
 			LCD_displayStringRowColumn(1,0,"Try Again");
 			genericDelay(2000);  // 2sec
 			LCD_sendCommand(clear_display);
-			get_cookingTime();
+			continue;
 		}
 	else{
-			while(1){
-					if(  SW1_INPUT() == 0){
-						LCD_sendCommand(clear_display);
-						Time_Seconds=0;
-						get_cookingTime();
-					}
-					else if(SW2_INPUT() == 0){
-						ShowTimeDecreasing(Time_Seconds);
-						break;
-					}
+			while( SW1_INPUT() != 0  || SW2_INPUT() != 0);
+	       	if(  SW1_INPUT() == 0){
+			LCD_sendCommand(clear_display);
+			Time_Seconds=0;
+                   continue;
 			}
+			else if(SW2_INPUT() == 0){
+		      ShowTimeDecreasing(Time_Seconds);
+			}
+			
 		}
 	break;
 	}

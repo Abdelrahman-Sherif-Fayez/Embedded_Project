@@ -11,7 +11,8 @@ static void Kilos_Display(uint8_t kilos);
 static uint32_t get_cookingTime(void);
 static bool Check_Time(uint32_t Total_Seconds);
 static void Check_startFlag(void);
-
+void Pause_State(void);
+void SW_1_2_interruptInit(void);
 
 
 uint8_t Start_flag=0; // flag to start counting 
@@ -19,8 +20,39 @@ uint8_t  Counter_flag = 0; // flag shows that we inside ShowTimeDecreasing funct
 uint8_t Stop_flag = 0;
 uint8_t Second_Check_flag = 0;
 
-void SW_1_2_interruptInit(void);
 
+void GPIOF_Handler(void)
+{	
+if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW2*/
+    {   
+			if(Second_Check_flag== 0)
+      Start_flag = 1;
+			else if(Second_Check_flag== 1)
+			{
+				Start_flag = 0;
+				Second_Check_flag = 0;
+			}
+			
+      GPIO_PORTF_ICR_R |= 0x01; /* clear the interrupt flag */
+     } 
+else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt causes by PF4/SW1 */
+    {   
+     if (Counter_flag == 1)
+			   {
+		  	 Second_Check_flag ++;
+		   	 Pause_State();
+		      }
+		 else {
+			 // do nothing
+			 // it means that the program is not in showtime decrasing function
+			 // so what time i can pause????!
+		             }
+			 GPIO_PORTF_ICR_R |= 0x10; /* clear the interrupt flag */
+		 }
+		
+ }
+
+ 
 int main(){
 	uint8_t key;
 	uint8_t kilos;
@@ -64,7 +96,7 @@ int main(){
 				case 'D':
 				time_seconds = get_cookingTime();
 				Check_startFlag();
-				ShowTimeDecreasing(kilos*12);
+				ShowTimeDecreasing(time_seconds);
 				LCD_sendCommand(clear_display);
 				LCD_displayString("Cooked");
 				genericDelay(2000);
@@ -116,6 +148,7 @@ int i,j;
 	}
 			sec= 59;
 }
+		Start_flag = 0;
 		Counter_flag = 0;
 }
 
@@ -224,15 +257,16 @@ static bool Check_Time(uint32_t Total_Seconds){
 static void Check_startFlag(void){
 		LCD_sendCommand(clear_display);
 		LCD_displayString("Enter start");
-	  LCD_displayStringRowColumn("to cook",1,0);
+	  LCD_displayStringRowColumn(1,0,"to cook");
 		while (Start_flag != 1);
+		LCD_sendCommand(clear_display);
 }
 
 void SW_1_2_interruptInit(void){
 	
-	  GPIO_PORTF_IS_R  &= ~(1<<4)|~(1<<0);        /* make bit 4, 0 edge sensitive */
-    GPIO_PORTF_IBE_R &=~(1<<4)|~(1<<0);         /* trigger is controlled by IEV */
-    GPIO_PORTF_IEV_R &= ~(1<<4)|~(1<<0);        /* falling edge trigger */
+	  GPIO_PORTF_IS_R  &= (1<<4)|(1<<0);        /* make bit 4, 0 edge sensitive */
+    GPIO_PORTF_IBE_R &=(1<<4)|(1<<0);         /* trigger is controlled by IEV */
+    GPIO_PORTF_IEV_R &= (1<<4)|(1<<0);        /* falling edge trigger */
     GPIO_PORTF_ICR_R |= (1<<4)|(1<<0);          /* clear any prior interrupt */
     GPIO_PORTF_IM_R  |= (1<<4)|(1<<0);          /* unmask interrupt */
 	
@@ -242,42 +276,16 @@ void SW_1_2_interruptInit(void){
 
 void Pause_State(void){
 
-	while( Start_flag != 0);
 	
+	while( Second_Check_flag !=2 && Start_flag != 0);
+	  Start_flag = 1;
+	  if (Second_Check_flag == 2){
+	  Second_Check_flag=0;
+	  LCD_sendCommand(clear_display);
+		LCD_displayString("stopped !!");
+		Start_flag = 0;
+		main();
+		}
 	
 }
 
-
-
-void GPIOF_Handler(void)
-{	
-  if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt causes by PF4/SW2*/
-    {   
-			if(Second_Check_flag==0)
-      Start_flag = 1;
-      GPIO_PORTF_ICR_R |= 0x10; /* clear the interrupt flag */
-     } 
-    else if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW1 */
-    {   
-     if (Counter_flag == 1){
-			 Second_Check_flag =1;
-			 Pause_State();
-	       	if(  SW1_INPUT() == 0){
-				   LCD_sendCommand(clear_display);
-						LCD_displayString("stopped !!");
-						main();
-			}
-					
-			else if(SW2_INPUT() == 0){
-				// it will complete show time decreasing normally
-		     NVIC_EN0_R |=(1<<30);
-			}
-		 }
-		 else {
-			 // do nothing
-			 // it means that the program is not in showtime decrasing function
-			 // so what time i can pause????!
-		 }
-     GPIO_PORTF_ICR_R |= 0x01; /* clear the interrupt flag */
-    }
-}

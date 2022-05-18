@@ -8,35 +8,45 @@ static uint8_t get_Operation(void);
 static void ShowTimeDecreasing(uint32_t time);
 static uint8_t get_Kilos(uint8_t type);
 static void Kilos_Display(uint8_t kilos);
-static void get_cookingTime(void);
+static uint32_t get_cookingTime(void);
 static bool Check_Time(uint32_t Total_Seconds);
+static void Check_startFlag(void);
 
 
-int main(){
+
+uint8_t Start_flag=0; // flag to start counting 
+uint8_t  entering_flag = 0; // flag shows that we inside ShowTimeDecreasing function
+uint8_t Stop_flag = 0;
+
+void SW_1_2_interruptInit(void);
+
+void main(){
 	uint8_t key;
 	uint8_t kilos;
+	uint32_t time_seconds;
 	RGB_LED_INIT();
 	SW1_INIT();
 	SW2_INIT();
 	LCD_init();
 	keypad_Init();
-
+  SW_1_2_interruptInit();
 	LCD_sendCommand(clear_display);
 	LCD_sendCommand(FirstRow);
 	genericDelay(500);       // 500ms	
 
 	while(1){
 		key = get_Operation();
-		LCD_sendCommand(clear_display);
 		switch(key){
 			case 'A':
+				Check_startFlag();
 				LCD_displayString("PopCorn");
 				ShowTimeDecreasing(60);
 				break;
 			case 'B':
 				kilos = get_Kilos('B');
 				Kilos_Display(kilos);
-				ShowTimeDecreasing(kilos*30);       // Rate of 0.5mins
+		   	Check_startFlag();
+		 		ShowTimeDecreasing(kilos*30);       // Rate of 0.5mins
 				LCD_sendCommand(FirstRow);
 				LCD_displayString("Beef Defrosted");
 				genericDelay(2000);
@@ -44,18 +54,22 @@ int main(){
 				case 'C':
 				kilos = get_Kilos('C');
 				Kilos_Display(kilos);
+			  Check_startFlag();
 				ShowTimeDecreasing(kilos*12);    // Rate of 0.2 mins
 				LCD_sendCommand(FirstRow);
 				LCD_displayString("ChickenDefrosted");
 				genericDelay(2000);
 				break;
 				case 'D':
-				get_cookingTime();
+				time_seconds = get_cookingTime();
+				Check_startFlag();
+				ShowTimeDecreasing(kilos*12);
 				LCD_sendCommand(clear_display);
 				LCD_displayString("Cooked");
 				genericDelay(2000);
 				break;
 		}
+		Start_flag=0;
 	}
 
 }
@@ -85,7 +99,7 @@ int i,j;
 	sec = time%60;
 		LCD_moveCursor(1,0);
 	  LCD_displayStringRowColumn(1,5,":");
-	
+	  entering_flag = 1;
 		for(i=min; i>=0; i--){       
 		LCD_moveCursor(1,3);
 		LCD_intgerToString(i/10);
@@ -101,6 +115,7 @@ int i,j;
 	}
 			sec= 59;
 }
+		entering_flag = 0;
 }
 
 static uint8_t get_Kilos(uint8_t type){
@@ -140,7 +155,7 @@ static void Kilos_Display(uint8_t kilos){
 	LCD_sendCommand(clear_display);
 }
 
-static void get_cookingTime(void){
+static uint32_t get_cookingTime(void){
 	uint8_t Time[4] = {0,0,0,0};
 	uint8_t counter,cursor,i;
 	uint32_t Time_Seconds=0;
@@ -182,18 +197,19 @@ static void get_cookingTime(void){
 			continue;
 		}
 	else{
-			while( SW1_INPUT() != 0  || SW2_INPUT() != 0);
+		   NVIC->ISER[0] & =~(1<<30); // because i need pooling method 
+			while( SW1_INPUT() != 0  && SW2_INPUT() != 0);
 	       	if(  SW1_INPUT() == 0){
 			LCD_sendCommand(clear_display);
 			Time_Seconds=0;
-                   continue;
+       continue;
 			}
 			else if(SW2_INPUT() == 0){
-		      ShowTimeDecreasing(Time_Seconds);
+				NVIC->ISER[0] |= (1<<30); // open again  
+		      return Time_Seconds;
 			}
 			
 		}
-	break;
 	}
 	
 }
@@ -203,4 +219,51 @@ static bool Check_Time(uint32_t Total_Seconds){
 	if((Total_Seconds >1800) || (Total_Seconds <10)){
 		return false;
 	}
+}
+static void Check_startFlag(void){
+		LCD_displayString("Enter start");
+	  LCD_displayStringRowColumn("to cook",1,0);
+		while (Start_flag != 1);
+}
+void SW_1_2_interruptInit(void){
+	
+	  GPIOF->IS  &= ~(1<<4)|~(1<<0);        /* make bit 4, 0 edge sensitive */
+    GPIOF->IBE &=~(1<<4)|~(1<<0);         /* trigger is controlled by IEV */
+    GPIOF->IEV &= ~(1<<4)|~(1<<0);        /* falling edge trigger */
+    GPIOF->ICR |= (1<<4)|(1<<0);          /* clear any prior interrupt */
+    GPIOF->IM  |= (1<<4)|(1<<0);          /* unmask interrupt */
+	
+	    NVIC->IP[30] = 3 << 5;     /* set interrupt priority to 3 */
+    NVIC->ISER[0] |= (1<<30);  /* enable IRQ30 (D30 of ISER[0]) */
+}
+void GPIOF_Handler(void)
+{	
+  if (GPIOF->MIS & 0x10) /* check if interrupt causes by PF4/SW2*/
+    {   
+      Start_flag = 1;
+      GPIOF->ICR |= 0x10; /* clear the interrupt flag */
+     } 
+    else if (GPIOF->MIS & 0x01) /* check if interrupt causes by PF0/SW1 */
+    {   
+     if (entering_flag == 1){
+			 NVIC->ISER[0] & =~(1<<30);
+			while( SW1_INPUT() != 0  && SW2_INPUT() != 0);
+	       	if(  SW1_INPUT() == 0){
+				   LCD_sendCommand(clear_display);
+						LCD_displayString("stopped !!");
+						main();
+			}
+			else if(SW2_INPUT() == 0){
+				// it will complete show time decreasing normally
+		     NVIC->ISER[0] |=(1<<30);
+			}
+			 
+		 }
+		 else {
+			 // do nothing
+			 // it means that the program is not in showtime decrasing function
+			 // so what time i can pause????!
+		 }
+     GPIOF->ICR |= 0x01; /* clear the interrupt flag */
+    }
 }

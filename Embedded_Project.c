@@ -16,20 +16,22 @@ static void Kilos_Display(uint8_t kilos);
 static uint32_t get_cookingTime(void);
 static bool Check_Time(uint32_t Total_Seconds);
 static void Check_startFlag(void);
-void Pause_State(void);
 void SW_1_2_interruptInit(void);
+void Disable_Systick(void);
+void Enable_Systick(void);
+
 
 /*******************************************************************************
  *                          global variables                                   *
  *******************************************************************************/
 uint8_t Start_flag=0; // flag to start counting
 uint8_t  Counter_flag = 0; // flag shows that we inside ShowTimeDecreasing function
-uint8_t Stop_flag = 0;
+uint8_t Stop_flag = 0;     
 uint8_t Second_Check_flag = 0;
+uint8_t Clear_Time_flag =0;     // flag to clear the time displayed on lcd
 
 
-void GPIOF_Handler(void)
-{
+void GPIOF_Handler(void){
 if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW2*/
     {
 			if(Second_Check_flag== 0)
@@ -38,25 +40,35 @@ if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW2*/
 			{
 				Start_flag = 0;
 				Second_Check_flag = 0;
+				Enable_Systick();
 			}
 
-      GPIO_PORTF_ICR_R |= 0x01; /* clear the interrupt flag */
+      GPIO_PORTF_ICR_R = 0x01; /* clear the interrupt flag */
      }
 else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt causes by PF4/SW1 */
     {
-     if (Counter_flag == 1)
-			   {
-		  	 Second_Check_flag ++;
-		   	 Pause_State();
-		      }
+     if (Counter_flag == 1) {
+							Second_Check_flag ++;
+							if(Second_Check_flag==2){   // If Pressed Switch1 for 2nd time
+								
+								Enable_Systick();
+								Second_Check_flag=0;
+								Start_flag = 0;
+								Clear_Time_flag=1;
+								Stop_flag=1;
+							}
+							else{
+							genericDelay(500);   // 500ms delay between 1st and 2nd Presses
+ 							Disable_Systick();
+							}
+						}
 		 else {
 			 // do nothing
 			 // it means that the program is not in showtime decrasing function
 			 // so what time i can pause????!
-		             }
-			 GPIO_PORTF_ICR_R |= 0x10; /* clear the interrupt flag */
+					}
+			 GPIO_PORTF_ICR_R = 0x10; /* clear the interrupt flag */
 		 }
-
  }
 
 
@@ -90,27 +102,37 @@ int main(){
 				Kilos_Display(kilos);
 		   	Check_startFlag();
 		 		ShowTimeDecreasing(kilos*30);       // Rate of 0.5mins
-				LCD_sendCommand(FirstRow);
-				LCD_displayString("Beef Defrosted");
-				genericDelay(2000);
+				if(Stop_flag ==0 ){
+					LCD_sendCommand(FirstRow);
+					LCD_displayString("Beef Defrosted");
+					genericDelay(2000);
+				}
 				break;
 				case 'C':
 				kilos = get_Kilos('C');
 				Kilos_Display(kilos);
 			  Check_startFlag();
 				ShowTimeDecreasing(kilos*12);    // Rate of 0.2 mins
-				LCD_sendCommand(FirstRow);
-				LCD_displayString("ChickenDefrosted");
-				genericDelay(2000);
+				if(Stop_flag ==0 ){
+					LCD_sendCommand(FirstRow);
+					LCD_displayString("ChickenDefrosted");
+					genericDelay(2000);
+				}
 				break;
 				case 'D':
 				time_seconds = get_cookingTime();
-				Check_startFlag();
 				ShowTimeDecreasing(time_seconds);
-				LCD_sendCommand(clear_display);
-				LCD_displayString("Cooked");
-				genericDelay(2000);
+				if(Stop_flag ==0 ){
+					LCD_sendCommand(clear_display);
+					LCD_displayString("Cooked");
+					genericDelay(2000);
+				}
 				break;
+		}
+		if(Stop_flag ==1){
+			LCD_sendCommand(clear_display);
+			LCD_displayString("Cooking Failed");
+			genericDelay(2000);
 		}
 		Start_flag=0;
 	}
@@ -134,6 +156,7 @@ static uint8_t get_Operation(void){
 			genericDelay(2000); // 2 sec
 			continue;
 		}
+		LCD_sendCommand(clear_display);
 		return key;
 	}
 }
@@ -163,6 +186,9 @@ int i,j;
 				LCD_moveCursor(1,7);
 				LCD_intgerToString(j%10);
 				genericDelay(1000);          //1 SEC
+				if(i ==0 && j ==0){
+					Clear_Time_flag =0;
+				}
 	}
 			sec= 59;
 }
@@ -185,6 +211,7 @@ static uint8_t get_Kilos(uint8_t type){
 			else if(type =='C'){
 					LCD_displayString("Chicken weight?");
 					}
+			
 				LCD_moveCursor(1,0);
 				LCD_displayString("Enter 1->9: ");
 				genericDelay(500);  // 500ms
@@ -262,8 +289,8 @@ static uint32_t get_cookingTime(void){
 		}
 	else{
 		   NVIC_EN0_R &= ~(1<<30); 												// because i need polling method
-			while( SW1_INPUT() != 0  && SW2_INPUT() != 0);
-	       	if(  SW1_INPUT() == 0){
+			while( SW1_INPUT() != 0  && SW2_INPUT() != 0){};
+	    if(  SW1_INPUT() == 0){
 			LCD_sendCommand(clear_display);
 			Time_Seconds=0;
        continue;
@@ -316,23 +343,34 @@ void SW_1_2_interruptInit(void){
 	  NVIC_PRI7_R = (NVIC_PRI7_R & 0xFF00FFFF) | 0x00600000 ;     /* set interrupt priority to 3 */
 		NVIC_EN0_R |= (1<<30);  /* enable IRQ30 */
 }
-/************************************************************************************
- * Function Name: Pause_State
 
- * Description: to pause the timer
- **********************************************************************************/
-void Pause_State(void){
-
-
-	while( Second_Check_flag !=2 && Start_flag != 0);
-	  Start_flag = 1;
-	  if (Second_Check_flag == 2){
-	  Second_Check_flag=0;
-	  LCD_sendCommand(clear_display);
-		LCD_displayString("stopped !!");
-		Start_flag = 0;
-		main();
-		}
-
+void SysTick_Init(void){
+	NVIC_ST_CTRL_R = 0x00;
+	NVIC_ST_RELOAD_R= 0x00FFFFFF;
+	NVIC_ST_CURRENT_R =0;
+	NVIC_ST_CTRL_R =0x05;
 }
 
+void SysTick_wait(uint32_t delay){
+	NVIC_ST_RELOAD_R = delay-1;
+	NVIC_ST_CURRENT_R =0;
+ 	while((NVIC_ST_CTRL_R & 0x00010000)==0){};
+}
+
+void genericDelay(uint32_t n){
+	uint32_t i;
+	for(i=0; i<n; i++){
+		SysTick_wait(16000);		//1ms
+		if(Clear_Time_flag ==1){
+			i=n;
+		}
+	}
+}
+
+ void Disable_Systick(void){
+			NVIC_ST_CTRL_R = 0x00;
+		}
+
+void Enable_Systick(void){
+			NVIC_ST_CTRL_R = 0x05;
+		}

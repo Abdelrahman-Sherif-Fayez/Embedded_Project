@@ -17,6 +17,7 @@ static uint32_t get_cookingTime(void);
 static bool Check_Time(uint32_t Total_Seconds);
 static void Check_startFlag(void);
 void SW_1_2_interruptInit(void);
+void SW3_interruptInit(void);
 void Disable_Systick(void);
 void Enable_Systick(void);
 
@@ -29,14 +30,15 @@ uint8_t  Counter_flag = 0; // flag shows that we inside ShowTimeDecreasing funct
 uint8_t Stop_flag = 0;     
 uint8_t Second_Check_flag = 0;
 uint8_t Clear_Time_flag =0;     // flag to clear the time displayed on lcd
+uint8_t Door_Open_flag = 0;     
 
 
 void GPIOF_Handler(void){
-if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW2*/
+if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt caused by PF0/SW2*/
     {
 			if(Second_Check_flag== 0)
       Start_flag = 1;
-			else if(Second_Check_flag== 1)
+			else if((Second_Check_flag== 1) && (Door_Open_flag==0))
 			{
 				Start_flag = 0;
 				Second_Check_flag = 0;
@@ -45,9 +47,9 @@ if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt causes by PF0/SW2*/
 
       GPIO_PORTF_ICR_R = 0x01; /* clear the interrupt flag */
      }
-else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt causes by PF4/SW1 */
+else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt caused by PF4/SW1 */
     {
-     if (Counter_flag == 1) {
+     if (Counter_flag == 1){
 							Second_Check_flag ++;
 							if(Second_Check_flag==2){   // If Pressed Switch1 for 2nd time
 								
@@ -71,6 +73,21 @@ else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt causes by PF4/SW1 */
 		 }
  }
 
+ void GPIOA_Handler(void){   /* check if interrupt caused by PA2/SW3 */
+	
+	 if(GPIO_PORTA_MIS_R & 0x04 && (SW3_INPUT() ==0)){     
+			if(Counter_flag == 1){
+				Door_Open_flag=1;
+				Disable_Systick();
+			}
+	 }
+	 else if(GPIO_PORTA_MIS_R & 0x04 && (SW3_INPUT() !=0)){
+			Door_Open_flag=0;
+			Enable_Systick();
+	 }
+	 		GPIO_PORTA_ICR_R = 0x04; /* clear the interrupt flag */
+ }
+
 
 int main(){
     /*******************************************************************************
@@ -82,9 +99,11 @@ int main(){
 	RGB_LED_INIT(); //initialization of the LEDs
 	SW1_INIT(); //initialization of switch 1
 	SW2_INIT(); //initialization of switch 2
+	SW3_INIT();
 	LCD_init(); // configure the lcd to be ready for display a messages
 	keypad_Init(); //initialization of the keypad
   SW_1_2_interruptInit(); //initialization of interrupts
+	SW3_interruptInit();
 	LCD_sendCommand(clear_display); //clears the lcd screen
 	LCD_sendCommand(FirstRow); //starts display from the first row
 	genericDelay(500);       // 500ms
@@ -334,9 +353,9 @@ static void Check_startFlag(void){
  **********************************************************************************/
 void SW_1_2_interruptInit(void){
 
-	  GPIO_PORTF_IS_R  &= (1<<4)|(1<<0);        /* make bit 4, 0 edge sensitive */
-    GPIO_PORTF_IBE_R &=(1<<4)|(1<<0);         /* trigger is controlled by IEV */
-    GPIO_PORTF_IEV_R &= (1<<4)|(1<<0);        /* falling edge trigger */
+	  GPIO_PORTF_IS_R  &= ~(1<<4)| ~(1<<0);        /* make bit 4, 0 edge sensitive */
+    GPIO_PORTF_IBE_R &= ~(1<<4)| ~(1<<0);         /* trigger is controlled by IEV */
+    GPIO_PORTF_IEV_R &= ~(1<<4)| ~(1<<0);        /* falling edge trigger */
     GPIO_PORTF_ICR_R |= (1<<4)|(1<<0);          /* clear any prior interrupt */
     GPIO_PORTF_IM_R  |= (1<<4)|(1<<0);          /* unmask interrupt */
 
@@ -374,3 +393,13 @@ void genericDelay(uint32_t n){
 void Enable_Systick(void){
 			NVIC_ST_CTRL_R = 0x05;
 		}
+
+void SW3_interruptInit(void){
+	  GPIO_PORTA_IS_R  &= ~0x04;        /* make bit 4, 0 edge sensitive */
+    GPIO_PORTA_IBE_R |= 0x04;         /* Interrupt trigger is by both edges */
+    GPIO_PORTA_ICR_R |= 0x04;          /* clear any prior interrupt */
+    GPIO_PORTA_IM_R  |= 0x04;          /* unmask interrupt */
+
+	  NVIC_PRI0_R = (NVIC_PRI0_R & 0xFFFFFF00) | 0x00000040 ;     /* set interrupt priority to 3 */
+		NVIC_EN0_R |= (1<<0);  /* enable IRQ0 */
+}

@@ -18,8 +18,6 @@ static bool Check_Time(uint32_t Total_Seconds);
 static void Check_startFlag(void);
 void SW_1_2_interruptInit(void);
 void SW3_interruptInit(void);
-void Disable_Systick(void);
-void Enable_Systick(void);
 
 
 /*******************************************************************************
@@ -28,21 +26,20 @@ void Enable_Systick(void);
 uint8_t Start_flag=0; // flag to start counting
 uint8_t  Counter_flag = 0; // flag shows that we inside ShowTimeDecreasing function
 uint8_t Stop_flag = 0;     
-uint8_t Second_Check_flag = 0;
+uint8_t Pause_flag = 0;
 uint8_t Clear_Time_flag =0;     // flag to clear the time displayed on lcd
 uint8_t Door_Open_flag = 0;     
-
 
 void GPIOF_Handler(void){
 if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt caused by PF0/SW2*/
     {
-			if(Second_Check_flag== 0)
+			if(Pause_flag== 0)
       Start_flag = 1;
-			else if((Second_Check_flag== 1) && (Door_Open_flag==0))
+			else if((Pause_flag== 1) && (Door_Open_flag==0))
 			{
-				Start_flag = 0;
-				Second_Check_flag = 0;
-				Enable_Systick();
+				Start_flag = 1;
+				Pause_flag = 0;
+
 			}
 
       GPIO_PORTF_ICR_R = 0x01; /* clear the interrupt flag */
@@ -50,18 +47,16 @@ if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt caused by PF0/SW2*/
 else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt caused by PF4/SW1 */
     {
      if (Counter_flag == 1){
-							Second_Check_flag ++;
-							if(Second_Check_flag==2){   // If Pressed Switch1 for 2nd time
-								
-								Enable_Systick();
-								Second_Check_flag=0;
+							Pause_flag ++;
+							if(Pause_flag==2){   // If Pressed Switch1 for 2nd time
+								Pause_flag=0;
 								Start_flag = 0;
 								Clear_Time_flag=1;
 								Stop_flag=1;
 							}
 							else{
-							genericDelay(500);   // 500ms delay between 1st and 2nd Presses
- 							Disable_Systick();
+						  // 500ms delay between 1st and 2nd Presses
+
 							}
 						}
 		 else {
@@ -78,13 +73,15 @@ else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt caused by PF4/SW1 */
 	 if(GPIO_PORTA_MIS_R & 0x04 && (SW3_INPUT() ==0)){     
 			if(Counter_flag == 1){
 				Door_Open_flag=1;
-				Disable_Systick();
+
 			}
 	 }
 	 else if(GPIO_PORTA_MIS_R & 0x04 && (SW3_INPUT() !=0)){
 			Door_Open_flag=0;
-			Enable_Systick();
+		
+			
 	 }
+ 
 	 		GPIO_PORTA_ICR_R = 0x04; /* clear the interrupt flag */
  }
 
@@ -93,7 +90,7 @@ int main(){
     /*******************************************************************************
 	 *                             local variables                                 *
 	 *******************************************************************************/
-	uint8_t key; //to store the value of the pressed key on the keypad
+	uint8_t key,n; //to store the value of the pressed key on the keypad
 	uint8_t kilos; //to store the number of kilos
 	uint32_t time_seconds; //to store cooking time in seconds
 	RGB_LED_INIT(); //initialization of the LEDs
@@ -151,9 +148,18 @@ int main(){
 		if(Stop_flag ==1){
 			LCD_sendCommand(clear_display);
 			LCD_displayString("Cooking Failed");
+			for (n=0; n<2;n++){
+				RGB_OUTPUT(0x0E);
+				generic_delay(500);
+				RGB_OUTPUT(0x00);
+				generic_delay(500);
 			genericDelay(2000);
 		}
-		Start_flag=0;
+		
+		}
+			RGB_OUTPUT(0x00);// all leds off
+		  Start_flag=0;
+		  Stop_flag =0;
 	}
 
 }
@@ -200,11 +206,12 @@ int i,j;
 		LCD_intgerToString(i%10);
 
 			for(j=sec; j>=0; j--){
+		    RGB_OUTPUT(0x0E); // leds ON 
 				LCD_moveCursor(1,6);     //00:00
 				LCD_intgerToString(j/10);
 				LCD_moveCursor(1,7);
 				LCD_intgerToString(j%10);
-				genericDelay(1000);          //1 SEC
+				genericDelay(900);          //1 SEC
 				if(i ==0 && j ==0){
 					Clear_Time_flag =0;
 				}
@@ -213,6 +220,8 @@ int i,j;
 }
 		Start_flag = 0;
 		Counter_flag = 0;
+
+    //RGB_OUTPUT(0x00); // Leds OFF
 }
 /************************************************************************************
  * Function Name: get_Kilos
@@ -383,16 +392,15 @@ void genericDelay(uint32_t n){
 		if(Clear_Time_flag ==1){
 			i=n;
 		}
+		while ( Pause_flag == 1  || Door_Open_flag == 1){
+				RGB_OUTPUT(0x0E);
+				generic_delay(500);
+				RGB_OUTPUT(0x00);
+				generic_delay(500);
+			}
 	}
+		
 }
-
- void Disable_Systick(void){
-			NVIC_ST_CTRL_R = 0x00;
-		}
-
-void Enable_Systick(void){
-			NVIC_ST_CTRL_R = 0x05;
-		}
 
 void SW3_interruptInit(void){
 	  GPIO_PORTA_IS_R  &= ~0x04;        /* make bit 4, 0 edge sensitive */

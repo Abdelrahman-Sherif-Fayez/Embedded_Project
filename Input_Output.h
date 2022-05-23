@@ -11,3 +11,5 @@ uint8_t SW1_INPUT(void);
 uint8_t SW2_INPUT(void);
 uint8_t SW3_INPUT(void);
 void RGB_OUTPUT(uint8_t led);
+void Buzzer_INIT(void);
+void Buzzer_OUTPUT(uint8_t data);

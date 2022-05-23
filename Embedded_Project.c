@@ -96,8 +96,8 @@ int main(){
 	RGB_LED_INIT(); //initialization of the LEDs
 	SW1_INIT(); //initialization of switch 1
 	SW2_INIT(); //initialization of switch 2
-	SW3_INIT(); //initialization of switch 3
-	Buzzer_INIT(); //initialization of the buzzer
+	SW3_INIT();
+	Buzzer_INIT();
 	LCD_init(); // configure the lcd to be ready for display a messages
 	keypad_Init(); //initialization of the keypad
   SW_1_2_interruptInit(); //initialization of interrupts

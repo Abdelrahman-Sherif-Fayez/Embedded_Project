@@ -40,6 +40,8 @@ void RGB_LED_INIT(void){
 	
 	void SW3_INIT(void){
 	
+	SYSCTL_RCGCGPIO_R |=  0x01;                  // Port A Clock Enable
+	while((SYSCTL_PRGPIO_R & 0x01) == 0 ){};
 	GPIO_PORTA_LOCK_R =  GPIO_LOCK_KEY;
 	GPIO_PORTA_CR_R  |= 0x04;
 	GPIO_PORTA_AFSEL_R &= ~0x04;
@@ -61,7 +63,7 @@ void RGB_LED_INIT(void){
 	
 	uint8_t SW3_INPUT(){
 	
-		return (GPIO_PORTF_DATA_R & 0x04);
+		return (GPIO_PORTA_DATA_R & 0x04);
 	}
 	
 	void RGB_OUTPUT(uint8_t led){
@@ -70,3 +72,19 @@ void RGB_LED_INIT(void){
 		GPIO_PORTF_DATA_R |= led;
 	}
 	
+	void Buzzer_INIT(void){
+	GPIO_PORTA_CR_R |= 0x08;
+	GPIO_PORTA_AFSEL_R &= ~0x08;
+	GPIO_PORTA_PCTL_R &= ~0x00000F000;
+	GPIO_PORTA_AMSEL_R &= ~0x08;
+	GPIO_PORTA_DEN_R |= 0x08;
+	GPIO_PORTA_DIR_R |= 0x08;
+	GPIO_PORTA_DATA_R &= ~0x08;
+	}
+	
+void Buzzer_OUTPUT(uint8_t data){
+	
+		GPIO_PORTA_DATA_R &= ~0x08;
+		GPIO_PORTA_DATA_R |= data;
+	}
+

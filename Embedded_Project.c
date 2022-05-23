@@ -35,7 +35,7 @@ if (GPIO_PORTF_MIS_R & 0x01) /* check if interrupt caused by PF0/SW2*/
     {
 			if(Pause_flag== 0)
       Start_flag = 1;
-			else if((Pause_flag== 1) && (Door_Open_flag==0))
+			else if((Pause_flag== 1) && (Door_Open_flag==0))   // Cooking Paused and the door was Closed
 			{
 				Start_flag = 1;
 				Pause_flag = 0;
@@ -48,15 +48,15 @@ else if (GPIO_PORTF_MIS_R & 0x10) /* check if interrupt caused by PF4/SW1 */
     {
      if (Counter_flag == 1){
 							Pause_flag ++;
-							if(Pause_flag==2){   // If Pressed Switch1 for 2nd time
+							if((Pause_flag==2) || (Pause_flag ==1 && Door_Open_flag==1)){   // If Pressed Switch1 for 2nd time  or  Door was opened and sw1 is pressed for 1st time.
+								Door_Open_flag=0;
 								Pause_flag=0;
 								Start_flag = 0;
 								Clear_Time_flag=1;
 								Stop_flag=1;
 							}
 							else{
-						  // 500ms delay between 1st and 2nd Presses
-
+									// Do Nothing
 							}
 						}
 		 else {
@@ -97,6 +97,7 @@ int main(){
 	SW1_INIT(); //initialization of switch 1
 	SW2_INIT(); //initialization of switch 2
 	SW3_INIT();
+	Buzzer_INIT();
 	LCD_init(); // configure the lcd to be ready for display a messages
 	keypad_Init(); //initialization of the keypad
   SW_1_2_interruptInit(); //initialization of interrupts
@@ -121,7 +122,6 @@ int main(){
 				if(Stop_flag ==0 ){
 					LCD_sendCommand(FirstRow);
 					LCD_displayString("Beef Defrosted");
-					genericDelay(2000);
 				}
 				break;
 				case 'C':
@@ -132,7 +132,6 @@ int main(){
 				if(Stop_flag ==0 ){
 					LCD_sendCommand(FirstRow);
 					LCD_displayString("ChickenDefrosted");
-					genericDelay(2000);
 				}
 				break;
 				case 'D':
@@ -141,21 +140,23 @@ int main(){
 				if(Stop_flag ==0 ){
 					LCD_sendCommand(clear_display);
 					LCD_displayString("Cooked");
-					genericDelay(2000);
 				}
 				break;
 		}
 		if(Stop_flag ==1){
 			LCD_sendCommand(clear_display);
 			LCD_displayString("Cooking Failed");
-			for (n=0; n<2;n++){
-				RGB_OUTPUT(0x0E);
-				generic_delay(500);
-				RGB_OUTPUT(0x00);
-				generic_delay(500);
 			genericDelay(2000);
 		}
-		
+		else{
+				for (n=0; n<3;n++){
+					Buzzer_OUTPUT(0x08);          // Alarm On
+					RGB_OUTPUT(0x0E);							// Leds on
+					genericDelay(1000);					
+					RGB_OUTPUT(0x00);						// Leds OFF
+					Buzzer_OUTPUT(0x00);        // Alarm off
+					genericDelay(1000);	
+				}		
 		}
 			RGB_OUTPUT(0x00);// all leds off
 		  Start_flag=0;
@@ -207,11 +208,11 @@ int i,j;
 
 			for(j=sec; j>=0; j--){
 		    RGB_OUTPUT(0x0E); // leds ON 
-				LCD_moveCursor(1,6);     //00:00
+				LCD_moveCursor(1,6);     
 				LCD_intgerToString(j/10);
 				LCD_moveCursor(1,7);
 				LCD_intgerToString(j%10);
-				genericDelay(900);          //1 SEC
+				genericDelay(1000);          //1 SEC
 				if(i ==0 && j ==0){
 					Clear_Time_flag =0;
 				}
@@ -393,10 +394,9 @@ void genericDelay(uint32_t n){
 			i=n;
 		}
 		while ( Pause_flag == 1  || Door_Open_flag == 1){
-				RGB_OUTPUT(0x0E);
-				generic_delay(500);
-				RGB_OUTPUT(0x00);
-				generic_delay(500);
+			
+				GPIO_PORTF_DATA_R ^= 0x0E;
+				SysTick_wait(16000000);      // WAIT 1 SEC
 			}
 	}
 		
